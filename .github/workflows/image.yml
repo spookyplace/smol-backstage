@@ -1,0 +1,72 @@
+# Builds the Backstage image (host build, as in https://backstage.io/docs/deployment/docker/) and,
+# on main, pushes ghcr.io/<owner>/smol-backstage:<full git sha>. See smol-platform ADR-0003.
+# Actions are pinned to commit SHAs (tags can move); the comment is the release they came from.
+# Trivy, Cosign and SBOM attestation are added in Phase 2.
+name: image
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: image-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Push to GHCR with the workflow's own short-lived GITHUB_TOKEN; no stored secret.
+      # Pull requests from forks get a read-only token regardless.
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Same major as the image's base (packages/backend/Dockerfile) and NODE_MAJOR in smol-platform
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+
+      # Node 25+ ships no Corepack; same setup as the smol-platform README
+      - name: Enable Corepack
+        run: npm install -g corepack@0.36.0 && corepack enable
+
+      - name: Host build
+        run: |
+          yarn install --immutable
+          yarn tsc
+          yarn build:backend
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        if: github.event_name != 'pull_request'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Lowercases the image name (GHCR requires it). Only an immutable sha tag, no `latest`.
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: type=sha,format=long,prefix=
+
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: packages/backend/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
