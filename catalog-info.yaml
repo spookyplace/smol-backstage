@@ -1,13 +1,13 @@
+# Backstage catalog entry for this repo. The `smol` system and the groups are defined in smol-platform.
 apiVersion: backstage.io/v1alpha1
 kind: Component
 metadata:
   name: smol-backstage
-  description: An example of a Backstage application.
-  # Example for optional annotations
-  # annotations:
-  #   github.com/project-slug: backstage/backstage
-  #   backstage.io/techdocs-ref: dir:.
+  description: The Smol developer portal (Backstage)
+  annotations:
+    github.com/project-slug: spookyplace/smol-backstage
 spec:
   type: website
-  owner: john@example.com
   lifecycle: experimental
+  owner: group:platform-team
+  system: smol
