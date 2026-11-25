@@ -15,7 +15,8 @@
 # Alternatively, there is also a multi-stage Dockerfile documented here:
 # https://backstage.io/docs/deployment/docker#multi-stage-build
 
-FROM node:24-trixie-slim
+# Node major must match NODE_MAJOR in smol-platform/versions.env (ADR-0003). Digest-pinned; bump tag and digest together.
+FROM node:26-trixie-slim@sha256:abe7e5a82b61a8ef67b315b85497c9e65173387ccf2f4a029248184b8e020be5
 
 # Install sqlite3 dependencies. You can skip this if you don't use sqlite3 in the image,
 # in which case you should also move better-sqlite3 to "devDependencies" in package.json.
@@ -47,8 +48,10 @@ ENV NODE_ENV=production
 COPY --chown=node:node yarn.lock package.json packages/backend/dist/skeleton.tar.gz ./
 RUN tar xzf skeleton.tar.gz && rm skeleton.tar.gz
 
+# Node 25+ images ship no yarn or corepack; run the Yarn release committed in .yarn/releases (yarnPath)
 RUN --mount=type=cache,target=/home/node/.cache/yarn,sharing=locked,uid=1000,gid=1000 \
-    yarn workspaces focus --all --production && rm -rf "$(yarn cache clean)"
+    YARN="node $(ls .yarn/releases/yarn-*.cjs)" && \
+    $YARN workspaces focus --all --production && rm -rf "$($YARN cache clean)"
 
 # This will include the examples, if you don't need these simply remove this line
 COPY --chown=node:node examples ./examples
